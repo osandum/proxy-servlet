@@ -9,6 +9,8 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.servlet.Filter;
@@ -50,6 +52,28 @@ public class FormatConversionFilter implements Filter {
 
             public URL getResource(String path) throws MalformedURLException {
                 return filterConfig.getServletContext().getResource(path);
+            }
+
+            public Iterable<String> getInitParameterNames() {
+                final Enumeration e = filterConfig.getInitParameterNames();
+                return new Iterable<String>() {
+                    public Iterator<String> iterator() {
+                        return new Iterator<String>() {
+
+                            public boolean hasNext() {
+                                return e.hasMoreElements();
+                            }
+
+                            public String next() {
+                                return (String)e.nextElement();
+                            }
+
+                            public void remove() {
+                                throw new UnsupportedOperationException();
+                            }
+                        };
+                    }
+                };
             }
         });
     }

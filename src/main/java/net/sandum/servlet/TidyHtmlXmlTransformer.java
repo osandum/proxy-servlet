@@ -8,13 +8,13 @@ import java.io.PrintWriter;
 import java.io.Writer;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Properties;
 import javax.xml.transform.ErrorListener;
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Result;
 import javax.xml.transform.Source;
 import javax.xml.transform.Templates;
 import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerConfigurationException;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
@@ -23,6 +23,7 @@ import javax.xml.transform.stream.StreamSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
+import org.w3c.tidy.Configuration;
 import org.w3c.tidy.Tidy;
 
 /**
@@ -59,6 +60,11 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
     public void transform(InputStream is, OutputStream os) throws IOException {
         Tidy jtidy = new Tidy();
         jtidy.setOnlyErrors(true);
+        jtidy.getConfiguration().addProps(tidyProps);
+
+        Configuration c = jtidy.getConfiguration();
+        c.printConfigOptions(new PrintWriter(System.out), true);
+
         jtidy.setErrout(new PrintWriter(new Writer()
         {
           public void write(char[] cbuf, int off, int len) throws IOException
@@ -110,6 +116,7 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
     private String systemId;
     private Templates templates;
     private Integer indent;
+    private Properties tidyProps;
 
     public void init(FormatTransformerConfig cfg) {
         tff = TransformerFactory.newInstance();
@@ -137,5 +144,12 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
                 throw new RuntimeException(ex);
             }
         }
+
+        tidyProps = new Properties();
+        for (String propName : cfg.getInitParameterNames())
+            if (propName.startsWith("jtidy."))
+                tidyProps.setProperty(propName.substring("jtidy.".length()), cfg.getInitParameter(propName));
+
+        tidyProps.list(System.out);
     }
 }

@@ -9,5 +9,7 @@ import java.net.URL;
 public interface FormatTransformerConfig {
     URL getResource(String path) throws MalformedURLException;
 
-    String getInitParameter(String string);
+    String getInitParameter(String name);
+
+    Iterable<String> getInitParameterNames();
 }
