@@ -8,6 +8,10 @@ import java.io.PrintWriter;
 import java.io.Writer;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Properties;
 import javax.xml.transform.ErrorListener;
 import javax.xml.transform.OutputKeys;
@@ -18,6 +22,9 @@ import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.sax.SAXResult;
+import javax.xml.transform.sax.SAXTransformerFactory;
+import javax.xml.transform.sax.TransformerHandler;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
 import org.slf4j.Logger;
@@ -86,18 +93,29 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
         }, true));
         Document doc = jtidy.parseDOM(is, null);
 
-        Source domSource = new DOMSource(doc);
-        Result sr = new StreamResult(os);
+        Source xslInput = new DOMSource(doc);
+        Result xslOutput = new StreamResult(os);
 
         // To force reload stylesheet:
         templates = null;
 
         try {
-            if (systemId != null && templates == null)
-                templates = tff.newTemplates(new StreamSource(systemId));
-            Transformer transformer =
-                    templates != null ? templates.newTransformer() : tff.newTransformer();
+            if (templates == null) {
+                templates = new LinkedList<Templates>();
+                for (String si : systemIds)
+                    templates.add(stff.newTemplates(new StreamSource(si)));
+                Collections.reverse(templates);
+            }
+            Transformer transformer = stff.newTransformer();
+//                  templates != null ? templates.newTransformer() : stff.newTransformer();
 //          transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+
+            for (Templates t : templates) {
+                TransformerHandler stage = stff.newTransformerHandler(t);
+                stage.setResult(xslOutput);
+                xslOutput = new SAXResult(stage);
+            }
+
             transformer.setOutputProperty(OutputKeys.METHOD, "xml");
             transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
             if (indent != null) {
@@ -106,43 +124,48 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
             }
             transformer.setErrorListener(ERROR_LOG);
 
-            transformer.transform(domSource, sr);
+            transformer.transform(xslInput, xslOutput);
         } catch (TransformerException ex) {
             LOG.error("Failed to set up XML serializer", ex);
         }
     }
 
-    private TransformerFactory tff;
-    private String systemId;
-    private Templates templates;
+    private SAXTransformerFactory stff;
+    private List<String> systemIds;
+    private List<Templates> templates;
+
     private Integer indent;
     private Properties tidyProps;
 
     public void init(FormatTransformerConfig cfg) {
-        tff = TransformerFactory.newInstance();
+        TransformerFactory tff = TransformerFactory.newInstance();
+        stff = (SAXTransformerFactory)tff;
 
         String s = cfg.getInitParameter("indent");
         if (s != null)
             indent = Integer.parseInt(s);
 
-        s = cfg.getInitParameter("templates");
-        if (s != null) {
-            try {
-                URL systemIdUrl = cfg.getResource(s);
-                if (systemIdUrl == null)
-                    throw new IllegalArgumentException(s + ": no such template");
-                systemId = systemIdUrl.toString();
-//                StreamSource ss = new StreamSource(systemId.toString());
-//                try {
-//                    templates = tff.newTemplates(ss);
-//                }
-//                catch (TransformerConfigurationException ex) {
-//                    throw new RuntimeException(ex);
-//                }
-            }
-            catch (MalformedURLException ex) {
-                throw new RuntimeException(ex);
-            }
+        systemIds = new ArrayList<String>();
+        String temps = cfg.getInitParameter("templates");
+        if (temps != null) {
+            for (String t : temps.split(","))
+                try {
+                    t = t.trim();
+                    URL systemIdUrl = cfg.getResource(t);
+                    if (systemIdUrl == null)
+                        throw new IllegalArgumentException(temps + ": no such template");
+                    systemIds.add(systemIdUrl.toString());
+    //                StreamSource ss = new StreamSource(systemId.toString());
+    //                try {
+    //                    templates = tff.newTemplates(ss);
+    //                }
+    //                catch (TransformerConfigurationException ex) {
+    //                    throw new RuntimeException(ex);
+    //                }
+                }
+                catch (MalformedURLException ex) {
+                    throw new RuntimeException(ex);
+                }
         }
 
         tidyProps = new Properties();

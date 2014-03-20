@@ -1,12 +1,8 @@
 package net.sandum.servlet;
 
-import net.sandum.util.servlet.ServletOutputStreamWrapper;
-import net.sandum.util.servlet.TransformedRequest;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Enumeration;
@@ -17,13 +13,14 @@ import javax.servlet.Filter;
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
 import javax.servlet.ServletException;
-import javax.servlet.ServletOutputStream;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletRequestWrapper;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpServletResponseWrapper;
+import net.sandum.util.servlet.ByteBufferedHttpServletResponseWrapper;
+import net.sandum.util.servlet.TransformedRequest;
+import net.sandum.util.servlet.TransformingResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -93,51 +90,51 @@ public class FormatConversionFilter implements Filter {
         log.debug("HIT: " + request.getRequestURL() + " [" + request.getQueryString() + "]");
 
         RequestWrapper wrappedRequest = new RequestWrapper(request);
-        ResponseWrapper wrappedResponse = new ResponseWrapper(response);
+        TransformingResponse wrappedResponse = wrap(response);
 
         try {
             log.debug(">>>> " + wrappedRequest);
             chain.doFilter(wrappedRequest, wrappedResponse);
-            log.debug(" ==> " + wrappedRequest + " down-chain finished. Result status: " + wrappedResponse.status);
+            log.debug(" ==> " + wrappedRequest + " down-chain finished. Result status: " + wrappedResponse.getDownstreamStatus());
 
-            postProcess(wrappedRequest, wrappedResponse);
+            postProcess(wrappedResponse);
             log.debug(" ==> " + wrappedRequest + " post-process finished");
+        } catch (RuntimeException ex) {
+            log.error("     " + wrappedRequest + " failed", ex);
+            throw new ServletException(ex);
         } finally {
             log.debug("<<<< " + wrappedRequest);
         }
     }
 
-    private void postProcess(RequestWrapper request, ResponseWrapper response) throws IOException {
-        String contentType = response.contentType;
-        int contentLength = response.contentLength;
+    protected TransformingResponse wrap(HttpServletResponse response) {
+        return new ByteBufferedHttpServletResponseWrapper(response);
+    }
 
-        log.debug(request.getRequestURI() + " served " + contentLength + " bytes of " + contentType);
+    private void postProcess(TransformingResponse response) throws IOException, ServletException {
+        byte downstreamContent[] = response.getDownstreamContent();
 
-        if (response.bo == null)
+        if (downstreamContent == null)
             return;
 
-        byte content[] = response.bo.toByteArray();
-
-        if (response.status == HttpServletResponse.SC_OK) {
-            HttpServletResponse clientResponse = (HttpServletResponse) response.getResponse();
-
-            ByteArrayInputStream is = new ByteArrayInputStream(content);
+        HttpServletResponse upstreamResponse = response.getUpstreamResponse();
+        if (response.getDownstreamStatus() == HttpServletResponse.SC_OK) {
+            ByteArrayInputStream is = new ByteArrayInputStream(downstreamContent);
             ByteArrayOutputStream os = new ByteArrayOutputStream();
             transformer.transform(is, os);
             byte result[] = os.toByteArray();
 
-            clientResponse.addHeader("X-Transformed-From", transformer.getSourceMimeType());
-            clientResponse.setContentType(transformer.getTargetMimeType());
-            clientResponse.setContentLength(result.length);
-            clientResponse.getOutputStream().write(result);
+            upstreamResponse.addHeader("X-Transformed-From", transformer.getSourceMimeType());
+            upstreamResponse.setContentType(transformer.getTargetMimeType());
+            upstreamResponse.setContentLength(result.length);
+            upstreamResponse.getOutputStream().write(result);
         } else {
-            HttpServletResponse clientResponse = (HttpServletResponse) response.getResponse();
-
-            clientResponse.setContentType(contentType);
-            clientResponse.setContentLength(contentLength);
-            clientResponse.getOutputStream().write(content);
+            upstreamResponse.setContentType(response.getDownstreamContentType());
+            upstreamResponse.setContentLength(response.getDownstreamContentLength());
+            upstreamResponse.getOutputStream().write(downstreamContent);
         }
     }
+
     private final static Pattern MAGIC_FORMAT_TAILPATTERN = Pattern.compile("(.*)\\.([a-zA-Z0-9_]+)_([a-zA-Z0-9]+)");
 
     static TransformedRequest parseRequestPath(String path) {
@@ -196,111 +193,6 @@ public class FormatConversionFilter implements Filter {
         @Override
         public String getPathInfo() {
             return pathInfo;
-        }
-    }
-
-    @SuppressWarnings("deprecation")
-    private static class ResponseWrapper extends HttpServletResponseWrapper {
-        private String contentType;
-        private int contentLength;
-        private int status = 0;
-        private ServletOutputStream stream;
-        private PrintWriter writer;
-        private ByteArrayOutputStream bo;
-
-        private ResponseWrapper(HttpServletResponse response) {
-            super(response);
-        }
-
-        private void createOutputStream() throws IOException {
-            bo = new ByteArrayOutputStream();
-            stream = new ServletOutputStreamWrapper(bo);
-        }
-
-        @Override
-        public void flushBuffer() throws IOException {
-            stream.flush();
-        }
-
-        @Override
-        public ServletOutputStream getOutputStream() throws IOException {
-            if (writer != null)
-                throw new IllegalStateException("getOutputStream() has already been called!");
-
-            if (stream == null)
-                createOutputStream();
-
-            return stream;
-        }
-
-        @Override
-        public PrintWriter getWriter() throws IOException {
-            if (writer != null)
-                return writer;
-
-            if (stream != null)
-                throw new IllegalStateException("getOutputStream() has already been called!");
-
-            createOutputStream();
-            writer = new PrintWriter(new OutputStreamWriter(stream, "UTF-8"));
-
-            return writer;
-        }
-
-        @Override
-        public void setContentLength(int length) {
-            if (log.isDebugEnabled())
-                log.debug("setContentLength(" + length + ")");
-            this.contentLength = length;
-            // ((HttpServletResponse) getResponse()).setContentLength(length);
-        }
-
-        @Override
-        public void setContentType(String type) {
-            if (log.isDebugEnabled())
-                log.debug("setContentType(\"" + type + "\")");
-            this.contentType = type;
-            // ((HttpServletResponse) getResponse()).setContentType(type);
-        }
-
-        @Override
-        public void addHeader(String name, String value) {
-            if (log.isDebugEnabled())
-                log.debug("addHeader(\"" + name + "\", \"" + value + "\")");
-            if ("Content-Type".equalsIgnoreCase(name))
-                this.contentType = value;
-            else if ("Content-Length".equalsIgnoreCase(name))
-                this.contentLength = Integer.valueOf(value);
-            else
-                super.addHeader(name, value);
-        }
-
-        @Override
-        public void setHeader(String name, String value) {
-            if (log.isDebugEnabled())
-                log.debug("setHeader(\"" + name + "\", \"" + value + "\")");
-            if ("Content-Type".equalsIgnoreCase(name))
-                this.contentType = value;
-            else if ("Content-Length".equalsIgnoreCase(name))
-                this.contentLength = Integer.valueOf(value);
-            else
-                super.setHeader(name, value);
-        }
-
-        @Override
-        public void setStatus(int sc) {
-            if (log.isDebugEnabled())
-                log.debug("setStatus(" + sc + ")");
-            this.status = sc;
-            super.setStatus(sc);
-        }
-
-        @Override
-        public void setStatus(int sc, String sm) {
-            if (log.isDebugEnabled())
-                log.debug("setStatus(" + sc + ", \"" + sm + "\")");
-            this.status = sc;
-            super.setStatus(sc, sm);
         }
     }
 }

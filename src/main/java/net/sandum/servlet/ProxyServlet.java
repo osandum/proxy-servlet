@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
-import java.util.regex.Matcher;
+import java.util.Enumeration;
 import java.util.regex.Pattern;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -29,8 +29,7 @@ public class ProxyServlet extends HttpServlet {
 
     private Pattern stripRequestHeadersPattern;
     private Pattern stripResponseHeadersPattern;
-    private Pattern pathPattern;
-    private String targetUrl;
+    private PatternReplacements pathPatterns;
     private boolean followRedirects;
     private int maxAge = -1;
 
@@ -52,15 +51,24 @@ public class ProxyServlet extends HttpServlet {
         if (!StringUtils.isEmpty(s))
             maxAge = Integer.valueOf(s);
 
-        Pattern pattern = Pattern.compile(getInitParameter("path-pattern"));
-        String target = getInitParameter("target-url");
-        setProxyPatternTarget(pattern, target);
+        pathPatterns = new PatternReplacements();
+        Enumeration pns = getInitParameterNames();
+        while (pns.hasMoreElements()) {
+            String pn = (String)pns.nextElement();
+            if (!pn.startsWith("path-pattern"))
+                continue;
+
+            String parameterSuffix = pn.substring("path-pattern".length());
+
+            String pattern = getInitParameter("path-pattern" + parameterSuffix);
+            String target = getInitParameter("target-url" + parameterSuffix);
+            addProxyPatternTarget(pattern, target);
+        }
     }
 
-    protected void setProxyPatternTarget(Pattern pattern, String target) {
-        this.pathPattern = pattern;
-        this.targetUrl = target;
-        log.info(getServletName() + " proxy " + pathPattern + " -> " + targetUrl);
+    protected void addProxyPatternTarget(String regex, String target) {
+        pathPatterns.addPatternReplacement(regex, target);
+        log.info(getServletName() + " proxy " + regex + " -> " + target);
     }
 
     private final RequestProxy proxy = new RequestProxy() {
@@ -109,15 +117,14 @@ public class ProxyServlet extends HttpServlet {
         if (!StringUtils.isEmpty(query))
             pathInfo += "?" + query;
 
-        Matcher m = pathPattern.matcher(pathInfo);
-        if (!m.matches())
-            throw RequestHandlingException.notFoundError("\"" + pathInfo + "\": unrecognized proxy target URL");
-
-        return m.replaceFirst(targetUrl);
+        return pathPatterns.match(pathInfo);
     }
 
     protected URL getProxyTargetUrl(HttpServletRequest request) throws RequestHandlingException {
         String resUrl = getReplacement(request);
+        if (resUrl == null)
+            throw RequestHandlingException.notFoundError("\"" + request.getPathInfo() + "\": unrecognized proxy target URL");
+
         if (resUrl.startsWith("/"))
             throw RequestHandlingException.forward(resUrl);
 
