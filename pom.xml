@@ -5,26 +5,17 @@
 
     <modelVersion>4.0.0</modelVersion>
 
+    <parent>
+        <groupId>net.sandum</groupId>
+        <artifactId>basepom</artifactId>
+        <version>1</version>
+    </parent>
+    
     <groupId>net.sandum.proxy-servlet</groupId>
     <artifactId>proxy-servlet</artifactId>
     <version>0.1-SNAPSHOT</version>
 
     <name>Proxy Servlet</name>
-
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-
-        <!--maven variable which points to your local repository -->
-        <internal.repo.path>file:///home/osa/dev/github/mvn-repo/</internal.repo.path>
-    </properties>
-
-    <distributionManagement>
-        <repository>
-            <id>internal.repo</id>
-            <name>Internal Repository</name>
-            <url>${internal.repo.path}</url>
-        </repository>
-    </distributionManagement>
 
     <dependencies>
         <dependency>
@@ -56,4 +47,31 @@
             <type>jar</type>
         </dependency>
     </dependencies>
+
+    <repositories>
+        <repository>
+            <id>sandum-release</id>
+            <name>Inhouse Internal Release Repository</name>
+            <url>http://sandum.net/repo/release</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+
+        <repository>
+            <id>sandum-snapshot</id>
+            <name>Inhouse Internal Snapshot Repository</name>
+            <url>http://sandum.net/repo/snapshot</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
 </project>
