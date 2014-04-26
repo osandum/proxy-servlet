@@ -1,4 +1,3 @@
-
 package net.sandum.servlet;
 
 import java.io.IOException;
@@ -39,6 +38,7 @@ import org.w3c.tidy.Tidy;
  * @version     $Id: TidyHtmlXmlTransformer.java -1 15-02-2014 15:37:26 osa $
  */
 public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
+
     private final static Logger LOG = LoggerFactory.getLogger(TidyHtmlXmlTransformer.class);
 
     private final ErrorListener ERROR_LOG = new ErrorListener() {
@@ -56,6 +56,14 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
         }
     };
 
+    public TidyHtmlXmlTransformer() {
+        TransformerFactory tff = TransformerFactory.newInstance();
+        stff = (SAXTransformerFactory) tff;
+
+        tidyProps = new Properties();
+        systemIds = new ArrayList<String>();
+    }
+
     public String getSourceMimeType() {
         return "text/html";
     }
@@ -72,24 +80,20 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
         Configuration c = jtidy.getConfiguration();
         c.printConfigOptions(new PrintWriter(System.out), true);
 
-        jtidy.setErrout(new PrintWriter(new Writer()
-        {
-          public void write(char[] cbuf, int off, int len) throws IOException
-          {
-            // Remove the end of line chars
-            while (len > 0 && (cbuf[len - 1] == '\n' || cbuf[len - 1] == '\r'))
-              len--;
-            if (len > 0)
-              LOG.debug(String.copyValueOf(cbuf, off, len));
-          }
+        jtidy.setErrout(new PrintWriter(new Writer() {
+            public void write(char[] cbuf, int off, int len) throws IOException {
+                // Remove the end of line chars
+                while (len > 0 && (cbuf[len - 1] == '\n' || cbuf[len - 1] == '\r'))
+                    len--;
+                if (len > 0)
+                    LOG.debug(String.copyValueOf(cbuf, off, len));
+            }
 
-          public void flush() throws IOException
-          {
-          }
+            public void flush() throws IOException {
+            }
 
-          public void close()
-          {
-          }
+            public void close() {
+            }
         }, true));
         Document doc = jtidy.parseDOM(is, null);
 
@@ -138,8 +142,6 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
     private Properties tidyProps;
 
     public void init(FormatTransformerConfig cfg) {
-        TransformerFactory tff = TransformerFactory.newInstance();
-        stff = (SAXTransformerFactory)tff;
 
         String s = cfg.getInitParameter("indent");
         if (s != null)
@@ -154,25 +156,31 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
                     URL systemIdUrl = cfg.getResource(t);
                     if (systemIdUrl == null)
                         throw new IllegalArgumentException(temps + ": no such template");
-                    systemIds.add(systemIdUrl.toString());
-    //                StreamSource ss = new StreamSource(systemId.toString());
-    //                try {
-    //                    templates = tff.newTemplates(ss);
-    //                }
-    //                catch (TransformerConfigurationException ex) {
-    //                    throw new RuntimeException(ex);
-    //                }
-                }
-                catch (MalformedURLException ex) {
+                    addTemplates(systemIdUrl);
+                } catch (MalformedURLException ex) {
                     throw new RuntimeException(ex);
                 }
         }
 
-        tidyProps = new Properties();
+        tidyProps.clear();
         for (String propName : cfg.getInitParameterNames())
             if (propName.startsWith("jtidy."))
-                tidyProps.setProperty(propName.substring("jtidy.".length()), cfg.getInitParameter(propName));
+                setTidyProperty(propName.substring("jtidy.".length()), cfg.getInitParameter(propName));
 
         tidyProps.list(System.out);
+    }
+
+    public void setTidyProperty(String key, String value) {
+        tidyProps.setProperty(key, value);
+    }
+
+    public void addTemplates(URL stylesheet) {
+        systemIds.add(stylesheet.toString());
+     // StreamSource ss = new StreamSource(systemId.toString());
+     // try {
+     //     templates = tff.newTemplates(ss);
+     // } catch (TransformerConfigurationException ex) {
+     //     throw new RuntimeException(ex);
+     // }
     }
 }
