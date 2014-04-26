@@ -17,6 +17,12 @@
 
     <name>Proxy Servlet</name>
 
+    <scm>
+        <url>https://github.com/osandum/proxy-servlet</url>
+        <connection>scm:git:git://github.com/osandum/proxy-servlet.git</connection>
+        <developerConnection>scm:git:git@github.com:osandum/proxy-servlet.git</developerConnection>
+    </scm>
+
     <dependencies>
         <dependency>
             <groupId>javax.servlet</groupId>
