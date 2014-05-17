@@ -73,6 +73,10 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
     }
 
     public void transform(InputStream is, OutputStream os) throws IOException {
+        transform(is, new StreamResult(os));
+    }
+
+    public void transform(InputStream is, Result xslOutput) throws IOException {
         Tidy jtidy = new Tidy();
         jtidy.setOnlyErrors(true);
         jtidy.getConfiguration().addProps(tidyProps);
@@ -98,7 +102,6 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
         Document doc = jtidy.parseDOM(is, null);
 
         Source xslInput = new DOMSource(doc);
-        Result xslOutput = new StreamResult(os);
 
         // To force reload stylesheet:
         templates = null;
@@ -134,12 +137,12 @@ public class TidyHtmlXmlTransformer implements SimpleFormatTransformer {
         }
     }
 
-    private SAXTransformerFactory stff;
+    private final SAXTransformerFactory stff;
     private List<String> systemIds;
     private List<Templates> templates;
 
     private Integer indent;
-    private Properties tidyProps;
+    private final Properties tidyProps;
 
     public void init(FormatTransformerConfig cfg) {
 
